@@ -46,21 +46,17 @@ function draw(container, branch, pricing) {
         
         <div class="field">
           <label>Branch ID</label>
-          <div class="key-display">
-            <code id="branch-id-text">${escapeHtml(branch.id)}</code>
-            <button class="btn btn-sm btn-ghost copy-btn" data-text="${escapeHtml(branch.id)}" title="Salin Branch ID">
-              ${Icons.copy || '📋'}
-            </button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <code style="flex: 1; display: block; padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 13px; word-break: break-all;">${escapeHtml(branch.id)}</code>
+            <button class="btn btn-sm btn-ghost copy-btn" data-text="${escapeHtml(branch.id)}" type="button" title="Salin Branch ID" style="white-space: nowrap;">📋 Salin</button>
           </div>
         </div>
         
         <div class="field">
           <label>API Key</label>
-          <div class="key-display">
-            <code id="api-key-text">${escapeHtml(branch.bridge_api_key || '-')}</code>
-            <button class="btn btn-sm btn-ghost copy-btn" data-text="${escapeHtml(branch.bridge_api_key || '')}" title="Salin API Key">
-              ${Icons.copy || '📋'}
-            </button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <code style="flex: 1; display: block; padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 13px; word-break: break-all; font-family: 'Courier New', monospace;">${escapeHtml(branch.bridge_api_key || '-')}</code>
+            <button class="btn btn-sm btn-ghost copy-btn" data-text="${escapeHtml(branch.bridge_api_key || '')}" type="button" title="Salin API Key" style="white-space: nowrap;">📋 Salin</button>
           </div>
         </div>
         
@@ -95,14 +91,21 @@ function draw(container, branch, pricing) {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       const text = btn.dataset.text;
+      if (!text) {
+        toast('Tidak ada data untuk disalin', 'error');
+        return;
+      }
       navigator.clipboard.writeText(text).then(() => {
         const originalText = btn.textContent;
         btn.textContent = '✓ Tersalin';
+        btn.disabled = true;
         setTimeout(() => {
-          btn.innerHTML = Icons.copy || '📋';
-        }, 1500);
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }, 2000);
         toast('Berhasil disalin ke clipboard', 'success');
-      }).catch(() => {
+      }).catch((err) => {
+        console.error('Copy error:', err);
         toast('Gagal menyalin', 'error');
       });
     });
