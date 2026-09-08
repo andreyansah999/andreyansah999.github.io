@@ -1,4 +1,5 @@
 import { Api } from '../api.js';
+import { Icons } from '../icons.js';
 import { toast, setLoading, escapeHtml, formatRupiah } from '../ui.js';
 import { withCache, Cache, captureToken, isStale } from '../cache.js';
 
@@ -41,9 +42,28 @@ function draw(container, branch, pricing) {
 
       <div class="card">
         <div class="card-header"><h3>Kunci Jembatan Mikrotik Cabang Ini</h3></div>
-        <p class="hint" style="margin-top:0">Masukkan Branch ID dan API Key ini ke script <code>mikrotik-agent.rsc</code> di router cabang Anda, supaya sistem bisa menyalakan/mematikan koneksi pelanggan cabang ini.</p>
-        <div class="field"><label>Branch ID</label><p class="key-mono" style="display:block;padding:8px">${branch.id}</p></div>
-        <div class="field"><label>API Key</label><p class="key-mono" style="display:block;padding:8px">${branch.bridge_api_key}</p></div>
+        <p class="hint" style="margin-top:0">Masukkan Branch ID dan API Key ini ke script <code>mikrotik-agent.rsc</code> di router cabang Anda, supaya sistem bisa menyalakan/mematikan koneksi pelanggan & memonitor status koneksi.</p>
+        
+        <div class="field">
+          <label>Branch ID</label>
+          <div class="key-display">
+            <code id="branch-id-text">${escapeHtml(branch.id)}</code>
+            <button class="btn btn-sm btn-ghost copy-btn" data-text="${escapeHtml(branch.id)}" title="Salin Branch ID">
+              ${Icons.copy || '📋'}
+            </button>
+          </div>
+        </div>
+        
+        <div class="field">
+          <label>API Key</label>
+          <div class="key-display">
+            <code id="api-key-text">${escapeHtml(branch.bridge_api_key || '-')}</code>
+            <button class="btn btn-sm btn-ghost copy-btn" data-text="${escapeHtml(branch.bridge_api_key || '')}" title="Salin API Key">
+              ${Icons.copy || '📋'}
+            </button>
+          </div>
+        </div>
+        
         <p class="hint">Kalau API key ini bocor / perlu diganti, minta Owner meng-generate ulang dari menu Cabang.</p>
       </div>
     </div>
@@ -60,7 +80,7 @@ function draw(container, branch, pricing) {
             return `<tr>
               <td>${escapeHtml(p.package_name)}</td>
               <td>${formatRupiah(p.base_price)}</td>
-              <td><input type="number" class="markup-input" data-pkg="${p.id}" value="${markup}" style="width:120px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)" /></td>
+              <td><input type="number" class="markup-input" data-pkg="${p.id}" value="${markup}" style="width:120px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card-bg)" /></td>
               <td class="final-price" data-pkg="${p.id}">${formatRupiah(Number(p.base_price) + Number(markup))}</td>
               <td><button class="btn btn-primary btn-sm" data-act="save-markup" data-pkg="${p.id}" data-base="${p.base_price}">Simpan</button></td>
             </tr>`;
@@ -69,6 +89,24 @@ function draw(container, branch, pricing) {
       </table>
     </div>
   `;
+
+  // Copy button handler
+  container.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const text = btn.dataset.text;
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Tersalin';
+        setTimeout(() => {
+          btn.innerHTML = Icons.copy || '📋';
+        }, 1500);
+        toast('Berhasil disalin ke clipboard', 'success');
+      }).catch(() => {
+        toast('Gagal menyalin', 'error');
+      });
+    });
+  });
 
   container.querySelector('#branch-form').addEventListener('submit', async (e) => {
     e.preventDefault();
