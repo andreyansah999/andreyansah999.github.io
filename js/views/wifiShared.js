@@ -5,7 +5,7 @@
  */
 import { Api } from '../api.js';
 import { Icons } from '../icons.js';
-import { toast, statusBadge, escapeHtml, formatDateTime } from '../ui.js';
+import { toast, escapeHtml, formatDateTime } from '../ui.js';
 import { withCache, Cache, captureToken, isStale } from '../cache.js';
 
 export async function renderWifiShared(container, opts) {
@@ -17,18 +17,18 @@ export async function renderWifiShared(container, opts) {
 function initView(container, opts, cacheKey, fetcher, rows) {
   const { setAction, showBranch } = opts;
   let filterText = '';
-  let selectedBranch = ''; // Filter cabang
+  let selectedBranch = '';
+  let selectedCustomer = null; // Untuk detail modal
 
   async function reload() {
     const myToken = captureToken(container);
     const fresh = await fetcher();
-    if (isStale(container, myToken)) return; // pengguna sudah pindah halaman, buang hasilnya
+    if (isStale(container, myToken)) return;
     Cache.set(cacheKey, fresh);
     initView(container, opts, cacheKey, fetcher, fresh);
   }
 
   function getBranches() {
-    // Ambil list unique cabang dari data
     const branches = [...new Set(rows.map(r => r.branch_id))].sort();
     return branches.map(bid => {
       const branchName = rows.find(r => r.branch_id === bid)?.branch_name || bid;
@@ -36,12 +36,133 @@ function initView(container, opts, cacheKey, fetcher, rows) {
     });
   }
 
+  function getStatusBadge(isOnline) {
+    if (isOnline === 'online') {
+      return `<span style="display: inline-block; padding: 4px 12px; background: #10b981; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">● Online</span>`;
+    } else if (isOnline === 'offline') {
+      return `<span style="display: inline-block; padding: 4px 12px; background: #ef4444; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">● Offline</span>`;
+    }
+    return `<span style="display: inline-block; padding: 4px 12px; background: var(--border); color: var(--text); border-radius: 6px; font-size: 12px;">−</span>`;
+  }
+
+  function showDetailModal(customer) {
+    selectedCustomer = customer;
+    const modal = document.getElementById('detail-modal');
+    if (!modal) return;
+
+    const wifiStatus = customer.wifi_status === 'on' ? 'Menyala' : 'Mati';
+    const wifiStatusColor = customer.wifi_status === 'on' ? '#10b981' : '#ef4444';
+
+    modal.querySelector('#modal-content').innerHTML = `
+      <div style="padding: 20px;">
+        <h3 style="margin-top: 0; margin-bottom: 20px;">${escapeHtml(customer.name)}</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+          <div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Status Koneksi</div>
+            <div style="font-size: 14px; font-weight: 600;">${getStatusBadge(customer.is_online)}</div>
+          </div>
+          <div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Status WiFi</div>
+            <div style="display: inline-block; padding: 4px 12px; background: ${wifiStatusColor}; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">${wifiStatus}</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+          <div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">PPPoE Username</div>
+            <div style="font-size: 14px; font-family: 'Courier New', monospace; background: var(--bg); padding: 8px; border-radius: 6px;">${escapeHtml(customer.pppoe_username || '-')}</div>
+          </div>
+          <div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">IP Address</div>
+            <div style="font-size: 14px; font-family: 'Courier New', monospace; background: var(--bg); padding: 8px; border-radius: 6px;">${escapeHtml(customer.ip_address || '-')}</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+          <div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Uptime</div>
+            <div style="font-size: 14px; font-weight: 600;">${escapeHtml(customer.uptime || '-')}</div>
+          </div>
+          <div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Update Terakhir</div>
+            <div style="font-size: 14px;">${formatDateTime(customer.last_sync) || '-'}</div>
+          </div>
+        </div>
+
+        ${showBranch ? `
+          <div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Cabang</div>
+            <div style="font-size: 14px; font-weight: 600;">${escapeHtml(customer.branch_name)}</div>
+          </div>
+        ` : ''}
+
+        <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;">
+          <div style="font-size: 12px; color: var(--muted); margin-bottom: 12px; font-weight: 600;">Kontrol Koneksi WiFi</div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary" id="btn-turn-on" style="flex: 1;">✓ Nyalakan</button>
+            <button class="btn btn-danger" id="btn-turn-off" style="flex: 1; background: #ef4444; border-color: #ef4444;">✕ Matikan</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    modal.style.display = 'flex';
+
+    // Event listeners untuk tombol kontrol
+    const btnOn = modal.querySelector('#btn-turn-on');
+    const btnOff = modal.querySelector('#btn-turn-off');
+
+    if (btnOn) {
+      btnOn.onclick = async () => {
+        btnOn.disabled = true;
+        btnOff.disabled = true;
+        try {
+          await Api.call(setAction, { customer_id: customer.customer_id, action_type: 'on' });
+          toast('Perintah nyalakan terkirim', 'success');
+          customer.wifi_status = 'on';
+          Cache.set(cacheKey, rows);
+          closeDetailModal();
+          draw();
+        } catch (err) {
+          toast(err.message, 'error');
+        } finally {
+          btnOn.disabled = false;
+          btnOff.disabled = false;
+        }
+      };
+    }
+
+    if (btnOff) {
+      btnOff.onclick = async () => {
+        btnOn.disabled = true;
+        btnOff.disabled = true;
+        try {
+          await Api.call(setAction, { customer_id: customer.customer_id, action_type: 'off' });
+          toast('Perintah matikan terkirim', 'success');
+          customer.wifi_status = 'off';
+          Cache.set(cacheKey, rows);
+          closeDetailModal();
+          draw();
+        } catch (err) {
+          toast(err.message, 'error');
+        } finally {
+          btnOn.disabled = false;
+          btnOff.disabled = false;
+        }
+      };
+    }
+  }
+
+  function closeDetailModal() {
+    const modal = document.getElementById('detail-modal');
+    if (modal) modal.style.display = 'none';
+    selectedCustomer = null;
+  }
+
   function draw() {
     const filteredRows = rows.filter(r => {
-      // Filter cabang
       if (selectedBranch && r.branch_id !== selectedBranch) return false;
-      
-      // Filter text
       if (!filterText) return true;
       const t = filterText.toLowerCase();
       return r.name.toLowerCase().includes(t) || (r.pppoe_username || '').toLowerCase().includes(t);
@@ -84,33 +205,36 @@ function initView(container, opts, cacheKey, fetcher, rows) {
         <table>
           <thead><tr>
             ${showBranch ? '<th>Cabang</th>' : ''}
-            <th>Pelanggan</th><th>PPPoE</th><th>Status Koneksi</th><th>IP</th><th>Uptime</th><th>Update Terakhir</th><th>Kontrol</th>
+            <th>Pelanggan</th>
+            <th>Aksi</th>
           </tr></thead>
           <tbody>
             ${filteredRows.length ? filteredRows.map(r => `
               <tr>
                 ${showBranch ? `<td>${escapeHtml(r.branch_name)}</td>` : ''}
-                <td><strong>${escapeHtml(r.name)}</strong></td>
-                <td>${escapeHtml(r.pppoe_username || '-')}</td>
-                <td>${statusBadge(r.is_online)}</td>
-                <td>${escapeHtml(r.ip_address || '-')}</td>
-                <td>${escapeHtml(r.uptime || '-')}</td>
-                <td>${formatDateTime(r.last_sync)}</td>
-                <td>
-                  <label class="switch" title="${r.wifi_status === 'on' ? 'Matikan' : 'Nyalakan'} koneksi">
-                    <input type="checkbox" data-id="${r.customer_id}" ${r.wifi_status === 'on' ? 'checked' : ''} />
-                    <span class="track"></span>
-                  </label>
-                </td>
-              </tr>`).join('') : `<tr><td colspan="${showBranch ? 8 : 7}" class="empty-state">
+                <td>${getStatusBadge(r.is_online)} <strong>${escapeHtml(r.name)}</strong></td>
+                <td><button class="btn btn-primary btn-sm" data-id="${r.customer_id}" data-action="detail">Detail</button></td>
+              </tr>`).join('') : `<tr><td colspan="${showBranch ? 3 : 2}" class="empty-state">
               ${Icons.wifi}<div>Belum ada data. Pastikan pelanggan sudah diisi "Username PPPoE" dan script Mikrotik cabang sudah berjalan.</div>
             </td></tr>`}
           </tbody>
         </table>
       </div>
-      <p class="hint" style="margin-top:12px">Status Online/Offline, IP, dan Uptime dilaporkan otomatis oleh router Mikrotik tiap cabang secara berkala. Kalau data terlihat lama tidak update, cek koneksi router ke internet.</p>
+      <p class="hint" style="margin-top:12px">Status Online/Offline, IP, dan Uptime dilaporkan otomatis oleh router Mikrotik tiap cabang secara berkala.</p>
+
+      <!-- Modal Detail -->
+      <div id="detail-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: var(--card-bg); border-radius: 12px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--card-bg);">
+            <h3 style="margin: 0;">Detail Pelanggan</h3>
+            <button id="close-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text);">×</button>
+          </div>
+          <div id="modal-content"></div>
+        </div>
+      </div>
     `;
 
+    // Event listeners
     container.querySelector('#q').addEventListener('input', (e) => { filterText = e.target.value; draw(); });
     
     if (showBranch) {
@@ -121,20 +245,26 @@ function initView(container, opts, cacheKey, fetcher, rows) {
     }
 
     container.querySelector('#btn-refresh').onclick = reload;
-    container.querySelectorAll('input[type=checkbox][data-id]').forEach(chk => chk.onchange = async () => {
-      const action_type = chk.checked ? 'on' : 'off';
-      chk.disabled = true;
-      try {
-        await Api.call(setAction, { customer_id: chk.dataset.id, action_type });
-        toast(action_type === 'on' ? 'Perintah nyalakan terkirim' : 'Perintah matikan terkirim', 'success');
-        const r = rows.find(x => x.customer_id === chk.dataset.id);
-        if (r) r.wifi_status = action_type;
-        Cache.set(cacheKey, rows);
-      } catch (err) {
-        toast(err.message, 'error');
-        chk.checked = !chk.checked;
-      } finally { chk.disabled = false; }
+
+    // Detail buttons
+    container.querySelectorAll('[data-action="detail"]').forEach(btn => {
+      btn.onclick = () => {
+        const customerId = btn.dataset.id;
+        const customer = rows.find(r => r.customer_id === customerId);
+        if (customer) showDetailModal(customer);
+      };
     });
+
+    // Close modal
+    const closeBtn = container.querySelector('#close-modal');
+    if (closeBtn) closeBtn.onclick = closeDetailModal;
+
+    const modal = container.querySelector('#detail-modal');
+    if (modal) {
+      modal.onclick = (e) => {
+        if (e.target === modal) closeDetailModal();
+      };
+    }
   }
 
   draw();
