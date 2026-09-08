@@ -1,0 +1,100 @@
+/**
+ * Bridge.gs
+ * Endpoint khusus untuk dipanggil oleh MIKROTIK (bukan oleh frontend), diamankan dengan
+ * BRIDGE_API_KEY (bukan token login user) karena router tidak bisa "login" sebagai user.
+ *
+ * Format request/response sengaja dibuat teks sederhana (bukan JSON) supaya gampang
+ * di-parse oleh RouterOS Script (lihat bridge/mikrotik-agent.rsc).
+ *
+ * Kontrak:
+ *  GET ?action=bridge.poll&branch_id=BR-XXXX&key=APIKEY
+ *      -> balas teks, satu baris per perintah pending:
+ *         id|pppoe_username|command
+ *         (command = enable / disable)
+ *      Setelah dibalas, status command diubah dari 'pending' -> 'sent'.
+ *
+ *  GET ?action=bridge.ack&id=CMD-XXXX&key=APIKEY&result=ok|failed
+ *      -> menandai command tsb 'applied' (ok) atau 'failed'.
+ *
+ *  GET ?action=bridge.report&branch_id=BR-XXXX&key=APIKEY&data=user1:online:10.0.0.2:1d2h,user2:offline:-:-
+ *      -> upsert tabel ConnectionStatus per pppoe_username yang dikirim.
+ *      Format tiap item dipisah koma: pppoe_username:is_online:ip:uptime
+ */
+
+/**
+ * Setiap cabang punya router Mikrotik sendiri (tidak ada router pusat), jadi setiap
+ * cabang juga punya bridge_api_key sendiri (kolom di sheet Branches, dibuat otomatis
+ * saat cabang dibuat / bisa di-generate ulang Owner). Ini mengisolasi cabang satu
+ * dari yang lain: kalau key satu cabang bocor, cabang lain tetap aman.
+ */
+function bridgeCheckKey_(branchId, key) {
+  var branch = getById_('Branches', branchId);
+  if (!branch) throw new AppError_('NOT_FOUND', 'Cabang tidak ditemukan.');
+  if (!branch.bridge_api_key || key !== branch.bridge_api_key) {
+    throw new AppError_('UNAUTHORIZED', 'API key jembatan Mikrotik salah untuk cabang ini.');
+  }
+  return branch;
+}
+
+function bridgePoll_(branchId, key) {
+  if (!branchId) throw new AppError_('BAD_REQUEST', 'branch_id wajib diisi.');
+  bridgeCheckKey_(branchId, key);
+  var pending = query_('WifiCommands', function (c) { return c.branch_id === branchId && c.status === 'pending'; });
+  var lines = pending.map(function (c) {
+    update_('WifiCommands', c.id, { status: 'sent' });
+    return [c.id, c.pppoe_username, c.command].join('|');
+  });
+  return lines.join('\n');
+}
+
+function bridgeAck_(id, key, result) {
+  var cmd = getById_('WifiCommands', id);
+  if (!cmd) throw new AppError_('NOT_FOUND', 'Command tidak ditemukan.');
+  bridgeCheckKey_(cmd.branch_id, key);
+  update_('WifiCommands', id, {
+    status: (result === 'ok') ? 'applied' : 'failed',
+    applied_at: nowIso_()
+  });
+  return true;
+}
+
+function bridgeReport_(branchId, key, dataStr) {
+  if (!branchId) throw new AppError_('BAD_REQUEST', 'branch_id wajib diisi.');
+  bridgeCheckKey_(branchId, key);
+  var customers = query_('Customers', function (c) { return c.branch_id === branchId; });
+  var byUsername = {};
+  customers.forEach(function (c) { if (c.pppoe_username) byUsername[c.pppoe_username] = c; });
+
+  var items = (dataStr || '').split(',').filter(function (s) { return s.trim() !== ''; });
+  var syncedAt = nowIso_();
+  var count = 0;
+
+  items.forEach(function (item) {
+    // Split manual (bukan item.split(':')) karena uptime Mikrotik sendiri mengandung
+    // tanda ":" (mis. "1d02:03:04"), jadi hanya 3 tanda ":" pertama yang jadi pemisah field,
+    // sisanya (betapa pun ada ":") dianggap satu kesatuan nilai uptime.
+    var i1 = item.indexOf(':');
+    var i2 = i1 === -1 ? -1 : item.indexOf(':', i1 + 1);
+    var i3 = i2 === -1 ? -1 : item.indexOf(':', i2 + 1);
+    if (i1 === -1 || i2 === -1 || i3 === -1) return; // format tidak sesuai, lewati
+
+    var username = item.substring(0, i1);
+    var isOnline = item.substring(i1 + 1, i2) || 'unknown';
+    var ip = item.substring(i2 + 1, i3);
+    var uptime = item.substring(i3 + 1);
+    var customer = byUsername[username];
+    if (!customer) return;
+
+    var existing = getById_('ConnectionStatus', customer.id, 'customer_id');
+    var row = {
+      customer_id: customer.id, branch_id: branchId, pppoe_username: username,
+      is_online: isOnline, ip_address: ip === '-' ? '' : ip, uptime: uptime === '-' ? '' : uptime,
+      last_sync: syncedAt, notes: ''
+    };
+    if (existing) update_('ConnectionStatus', customer.id, row, 'customer_id');
+    else insert_('ConnectionStatus', row);
+    count++;
+  });
+
+  return count;
+}
