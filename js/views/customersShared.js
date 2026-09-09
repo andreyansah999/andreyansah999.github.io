@@ -125,7 +125,7 @@ function initView(container, opts, cacheKey, fetchData, data) {
 
   container.innerHTML = `
     <div class="toolbar">
-      <div class="search-box">${Icons.search}<input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." value="${escapeHtml(filterText)}" /></div>
+      <div class="search-box"><input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." value="${escapeHtml(filterText)}" /></div>
       ${showBranch ? `<select id="branch-filter" style="max-width:200px"><option value="">Semua Cabang</option>${branches.map(b => `<option value="${b.id}" ${filterBranch === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select>` : ''}
       <select id="payment-filter" style="max-width:200px">
         <option value="" ${filterPayment === '' ? 'selected' : ''}>Semua Status Bayar</option>
