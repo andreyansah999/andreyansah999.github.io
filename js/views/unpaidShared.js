@@ -44,7 +44,7 @@ function initView(container, opts, cacheKey, fetcher, all) {
       else if (filterStatus) { if (c.subscription_status !== filterStatus) return false; }
       if (!filterText) return true;
       const t = filterText.toLowerCase();
-      return c.name.toLowerCase().includes(t) || (c.phone || '').includes(t) || (c.pppoe_username || '').toLowerCase().includes(t);
+      return c.name.toLowerCase().includes(t) || string(c.phone || '').includes(t) || (c.pppoe_username || '').toLowerCase().includes(t);
     });
   }
 
