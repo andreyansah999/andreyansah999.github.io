@@ -48,7 +48,7 @@ function initView(container, opts, cacheKey, fetchData, data) {
       if (filterPayment === 'terlambat' && c.subscription_status !== 'terlambat') return false;
       if (!filterText) return true;
       const t = filterText.toLowerCase();
-      return c.name.toLowerCase().includes(t) || (c.phone || '').includes(t) || (c.pppoe_username || '').toLowerCase().includes(t);
+      return c.name.toLowerCase().includes(t) || String(c.phone || '').includes(t) || (c.pppoe_username || '').toLowerCase().includes(t);
     });
   }
 
