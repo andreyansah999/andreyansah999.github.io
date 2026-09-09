@@ -100,7 +100,7 @@ function initView(container, opts, cacheKey, fetcher, all) {
       ${statCard('red', counts.terlambat, 'Terlambat (WiFi Mati)')}
     </div>
     <div class="toolbar" style="margin-top:18px">
-      <div class="search-box">${Icons.search}<input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." value="${escapeHtml(filterText)}" /></div>
+      <div class="search-box"><input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." value="${escapeHtml(filterText)}" /></div>
       <select id="status-filter" style="max-width:220px">
         <option value="belum_lunas" ${filterStatus === 'belum_lunas' ? 'selected' : ''}>Belum Lunas (Semua)</option>
         <option value="menunggu" ${filterStatus === 'menunggu' ? 'selected' : ''}>Belum Jatuh Tempo</option>
