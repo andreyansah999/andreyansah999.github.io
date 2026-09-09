@@ -48,38 +48,33 @@ function initView(container, opts, cacheKey, fetcher, all) {
     });
   }
 
-  function renderTable() {
+  function renderTableBody() {
     const rows = filtered();
-    container.querySelector('#table-slot').innerHTML = `
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            ${showBranch ? '<th>Cabang</th>' : ''}
-            <th>Nama</th><th>Telepon</th><th>Paket</th><th>Harga</th><th>Jatuh Tempo</th><th>Status</th><th>WiFi</th><th></th>
-          </tr></thead>
-          <tbody>
-            ${rows.length ? rows.map(c => `
-              <tr>
-                ${showBranch ? `<td>${escapeHtml(c.branch_name)}</td>` : ''}
-                <td><strong>${escapeHtml(c.name)}</strong>${c.pppoe_username ? `<div class="text-muted" style="font-size:.78rem">${escapeHtml(c.pppoe_username)}</div>` : ''}</td>
-                <td>${escapeHtml(c.phone || '-')}</td>
-                <td>${escapeHtml(c.package_name)}</td>
-                <td>${formatRupiah(c.price)}</td>
-                <td>Tgl ${c.due_date_day}</td>
-                <td>${statusBadge(c.subscription_status)}</td>
-                <td>
-                  <label class="switch" title="${c.wifi_status === 'on' ? 'Matikan' : 'Nyalakan'} koneksi">
-                    <input type="checkbox" data-act="wifi" data-id="${c.id}" ${c.wifi_status === 'on' ? 'checked' : ''} />
-                    <span class="track"></span>
-                  </label>
-                </td>
-                <td><button class="btn btn-primary btn-sm" data-act="pay" data-id="${c.id}">${Icons.card}Catat Bayar</button></td>
-              </tr>`).join('') : `<tr><td colspan="${showBranch ? 9 : 8}" class="empty-state">${Icons.check}<div>Tidak ada pelanggan yang cocok dengan filter ini.</div></td></tr>`}
-          </tbody>
-        </table>
-      </div>
-    `;
+    const tbody = container.querySelector('#table-body');
+    if (!tbody) return;
+    
+    tbody.innerHTML = rows.length ? rows.map(c => `
+      <tr>
+        ${showBranch ? `<td>${escapeHtml(c.branch_name)}</td>` : ''}
+        <td><strong>${escapeHtml(c.name)}</strong>${c.pppoe_username ? `<div class="text-muted" style="font-size:.78rem">${escapeHtml(c.pppoe_username)}</div>` : ''}</td>
+        <td>${escapeHtml(c.phone || '-')}</td>
+        <td>${escapeHtml(c.package_name)}</td>
+        <td>${formatRupiah(c.price)}</td>
+        <td>Tgl ${c.due_date_day}</td>
+        <td>${statusBadge(c.subscription_status)}</td>
+        <td>
+          <label class="switch" title="${c.wifi_status === 'on' ? 'Matikan' : 'Nyalakan'} koneksi">
+            <input type="checkbox" data-act="wifi" data-id="${c.id}" ${c.wifi_status === 'on' ? 'checked' : ''} />
+            <span class="track"></span>
+          </label>
+        </td>
+        <td><button class="btn btn-primary btn-sm" data-act="pay" data-id="${c.id}">${Icons.card}Catat Bayar</button></td>
+      </tr>`).join('') : `<tr><td colspan="${showBranch ? 9 : 8}" class="empty-state">${Icons.check}<div>Tidak ada pelanggan yang cocok dengan filter ini.</div></td></tr>`;
 
+    attachTableEvents();
+  }
+
+  function attachTableEvents() {
     container.querySelectorAll('[data-act="pay"]').forEach(btn => btn.onclick = () => {
       const customer = active.find(x => x.id === btn.dataset.id);
       openPaymentForm({ customer, recordAction, onSaved: () => reload() });
@@ -105,7 +100,7 @@ function initView(container, opts, cacheKey, fetcher, all) {
       ${statCard('red', counts.terlambat, 'Terlambat (WiFi Mati)')}
     </div>
     <div class="toolbar" style="margin-top:18px">
-      <div class="search-box">${Icons.search}<input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." /></div>
+      <div class="search-box">${Icons.search}<input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." value="${escapeHtml(filterText)}" /></div>
       <select id="status-filter" style="max-width:220px">
         <option value="belum_lunas" ${filterStatus === 'belum_lunas' ? 'selected' : ''}>Belum Lunas (Semua)</option>
         <option value="menunggu" ${filterStatus === 'menunggu' ? 'selected' : ''}>Belum Jatuh Tempo</option>
@@ -115,13 +110,29 @@ function initView(container, opts, cacheKey, fetcher, all) {
         <option value="" ${filterStatus === '' ? 'selected' : ''}>Semua Pelanggan</option>
       </select>
     </div>
-    <div id="table-slot"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          ${showBranch ? '<th>Cabang</th>' : ''}
+          <th>Nama</th><th>Telepon</th><th>Paket</th><th>Harga</th><th>Jatuh Tempo</th><th>Status</th><th>WiFi</th><th></th>
+        </tr></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
   `;
 
-  container.querySelector('#q').addEventListener('input', (e) => { filterText = e.target.value; renderTable(); });
-  container.querySelector('#status-filter').addEventListener('change', (e) => { filterStatus = e.target.value; renderTable(); });
+  // Event listeners - update hanya filterText/filterStatus, lalu render table body
+  container.querySelector('#q').addEventListener('input', (e) => { 
+    filterText = e.target.value; 
+    renderTableBody(); 
+  });
+  
+  container.querySelector('#status-filter').addEventListener('change', (e) => { 
+    filterStatus = e.target.value; 
+    renderTableBody(); 
+  });
 
-  renderTable();
+  renderTableBody();
 }
 
 function statCard(color, value, label, icon) {
