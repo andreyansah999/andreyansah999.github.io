@@ -52,48 +52,43 @@ function initView(container, opts, cacheKey, fetchData, data) {
     });
   }
 
-  function renderTable() {
+  function renderTableBody() {
     const rows = filtered();
-    container.querySelector('#table-slot').innerHTML = `
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            ${showBranch ? '<th>Cabang</th>' : ''}
-            <th>Nama</th><th>Paket</th><th>Harga</th><th>Jatuh Tempo</th><th>Status Bayar</th><th>WiFi</th><th></th>
-          </tr></thead>
-          <tbody>
-            ${rows.length ? rows.map(c => `
-              <tr>
-                ${showBranch ? `<td>${escapeHtml(c.branch_name)}</td>` : ''}
-                <td>
-                  <strong>${escapeHtml(c.name)}</strong>
-                  <div class="text-muted" style="font-size:.78rem">${escapeHtml(c.phone || '-')}${c.pppoe_username ? ' · ' + escapeHtml(c.pppoe_username) : ''}</div>
-                </td>
-                <td>${escapeHtml(c.package_name)}</td>
-                <td>${formatRupiah(c.price)}</td>
-                <td>Tgl ${c.due_date_day}</td>
-                <td>
-                  ${statusBadge(c.subscription_status)}
-                  ${c.subscription_status === 'lunas' ? `<button class="btn btn-ghost btn-sm" data-act="void" data-id="${c.id}" title="Salah catat? Batalkan pembayaran ini">${Icons.edit}</button>` : ''}
-                </td>
-                <td>
-                  <label class="switch" title="${c.wifi_status === 'on' ? 'Matikan' : 'Nyalakan'} koneksi">
-                    <input type="checkbox" data-act="wifi" data-id="${c.id}" ${c.wifi_status === 'on' ? 'checked' : ''} />
-                    <span class="track"></span>
-                  </label>
-                </td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${c.id}">${Icons.edit}</button>
-                    <button class="btn btn-ghost btn-sm" data-act="del" data-id="${c.id}">${Icons.trash}</button>
-                  </div>
-                </td>
-              </tr>`).join('') : `<tr><td colspan="${showBranch ? 8 : 7}" class="empty-state">Tidak ada pelanggan yang cocok.</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-    `;
+    const tbody = container.querySelector('#table-body');
+    if (!tbody) return;
+    
+    tbody.innerHTML = rows.length ? rows.map(c => `
+      <tr>
+        ${showBranch ? `<td>${escapeHtml(c.branch_name)}</td>` : ''}
+        <td>
+          <strong>${escapeHtml(c.name)}</strong>
+          <div class="text-muted" style="font-size:.78rem">${escapeHtml(c.phone || '-')}${c.pppoe_username ? ' · ' + escapeHtml(c.pppoe_username) : ''}</div>
+        </td>
+        <td>${escapeHtml(c.package_name)}</td>
+        <td>${formatRupiah(c.price)}</td>
+        <td>Tgl ${c.due_date_day}</td>
+        <td>
+          ${statusBadge(c.subscription_status)}
+          ${c.subscription_status === 'lunas' ? `<button class="btn btn-ghost btn-sm" data-act="void" data-id="${c.id}" title="Salah catat? Batalkan pembayaran ini">${Icons.edit}</button>` : ''}
+        </td>
+        <td>
+          <label class="switch" title="${c.wifi_status === 'on' ? 'Matikan' : 'Nyalakan'} koneksi">
+            <input type="checkbox" data-act="wifi" data-id="${c.id}" ${c.wifi_status === 'on' ? 'checked' : ''} />
+            <span class="track"></span>
+          </label>
+        </td>
+        <td>
+          <div class="row-actions">
+            <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${c.id}">${Icons.edit}</button>
+            <button class="btn btn-ghost btn-sm" data-act="del" data-id="${c.id}">${Icons.trash}</button>
+          </div>
+        </td>
+      </tr>`).join('') : `<tr><td colspan="${showBranch ? 8 : 7}" class="empty-state">Tidak ada pelanggan yang cocok.</td></tr>`;
 
+    attachTableEvents();
+  }
+
+  function attachTableEvents() {
     container.querySelectorAll('[data-act="edit"]').forEach(b => b.onclick = () => {
       openCustomerForm({
         customer: customers.find(x => x.id === b.dataset.id),
@@ -130,25 +125,42 @@ function initView(container, opts, cacheKey, fetchData, data) {
 
   container.innerHTML = `
     <div class="toolbar">
-      <div class="search-box">${Icons.search}<input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." /></div>
-      ${showBranch ? `<select id="branch-filter" style="max-width:200px"><option value="">Semua Cabang</option>${branches.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('')}</select>` : ''}
+      <div class="search-box">${Icons.search}<input type="text" id="q" placeholder="Cari nama / telepon / PPPoE..." value="${escapeHtml(filterText)}" /></div>
+      ${showBranch ? `<select id="branch-filter" style="max-width:200px"><option value="">Semua Cabang</option>${branches.map(b => `<option value="${b.id}" ${filterBranch === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}</select>` : ''}
       <select id="payment-filter" style="max-width:200px">
-        <option value="">Semua Status Bayar</option>
-        <option value="belum_bayar">Belum Bayar${belumBayarCount ? ' (' + belumBayarCount + ')' : ''}</option>
-        <option value="terlambat">Terlambat Saja</option>
-        <option value="lunas">Sudah Lunas</option>
+        <option value="" ${filterPayment === '' ? 'selected' : ''}>Semua Status Bayar</option>
+        <option value="belum_bayar" ${filterPayment === 'belum_bayar' ? 'selected' : ''}>Belum Bayar${belumBayarCount ? ' (' + belumBayarCount + ')' : ''}</option>
+        <option value="terlambat" ${filterPayment === 'terlambat' ? 'selected' : ''}>Terlambat Saja</option>
+        <option value="lunas" ${filterPayment === 'lunas' ? 'selected' : ''}>Sudah Lunas</option>
       </select>
       <div class="spacer"></div>
       <button class="btn btn-ghost" id="btn-import">${Icons.upload}Impor dari SQL</button>
       <button class="btn btn-primary" id="btn-add">${Icons.plus}Tambah Pelanggan</button>
     </div>
-    <div id="table-slot"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          ${showBranch ? '<th>Cabang</th>' : ''}
+          <th>Nama</th><th>Paket</th><th>Harga</th><th>Jatuh Tempo</th><th>Status Bayar</th><th>WiFi</th><th></th>
+        </tr></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
   `;
 
-  container.querySelector('#q').addEventListener('input', (e) => { filterText = e.target.value; renderTable(); });
+  // Event listeners - update hanya filterText/filterBranch/filterPayment, lalu render table body
+  container.querySelector('#q').addEventListener('input', (e) => { 
+    filterText = e.target.value; 
+    renderTableBody(); 
+  });
+  
   const bf = container.querySelector('#branch-filter');
-  if (bf) bf.addEventListener('change', (e) => { filterBranch = e.target.value; renderTable(); });
-  container.querySelector('#payment-filter').addEventListener('change', (e) => { filterPayment = e.target.value; renderTable(); });
+  if (bf) bf.addEventListener('change', (e) => { filterBranch = e.target.value; renderTableBody(); });
+  
+  container.querySelector('#payment-filter').addEventListener('change', (e) => { 
+    filterPayment = e.target.value; 
+    renderTableBody(); 
+  });
 
   container.querySelector('#btn-add').onclick = () => {
     if (showBranch && !branches.length) { toast('Tambahkan cabang terlebih dahulu.', 'error'); return; }
@@ -160,7 +172,7 @@ function initView(container, opts, cacheKey, fetchData, data) {
     wizard.onDone(() => { toast('Data pelanggan hasil impor sudah masuk', 'success'); reload(); });
   };
 
-  renderTable();
+  renderTableBody();
 }
 
 /**
