@@ -6,7 +6,6 @@
  */
 import { CONFIG } from './config.js';
 import { State } from './state.js';
-import { Cache } from './cache.js';
 
 class ApiError extends Error {
   constructor(code, message) {
@@ -15,15 +14,12 @@ class ApiError extends Error {
   }
 }
 
-// Aksi baca (tidak mengubah data) -> aman dijawab dari cache lokal.
-// Aksi lain (save/delete/record/set/import/dll) dianggap aksi tulis -> begitu SUKSES,
-// seluruh cache lokal dibersihkan supaya kunjungan berikutnya ke halaman manapun (mis.
-// Dashboard setelah catat pembayaran) mengambil data segar dari server, bukan angka lama.
-const READ_PATTERNS = [/\.list$/, /\.get$/, /\.monitor$/, /\.queue$/, /\.me$/, /dashboard$/];
-const READ_EXACT = new Set(['ping', 'app.info', 'owner.activity', 'admin.branch_info']);
-function isReadAction(action) {
-  return READ_EXACT.has(action) || READ_PATTERNS.some((re) => re.test(action));
-}
+// CATATAN cache: call() ini SENGAJA tidak membersihkan cache lokal setelah aksi tulis
+// (save/delete/record/set/import/dll) - itu tanggung jawab masing-masing halaman lewat
+// pola reload() + Cache.set() miliknya sendiri (lihat ownerBranches.js, customersShared.js,
+// wifiShared.js, dst), supaya pindah ke menu LAIN tidak ikut kena layar loading kosong.
+// Pembersihan TOTAL cache saat login/logout sudah ditangani State.save()/State.clear()
+// di state.js, jadi tidak perlu diulang di sini.
 
 async function call(action, params = {}) {
   const body = Object.assign({}, params, { action, token: State.token });
@@ -53,7 +49,6 @@ async function call(action, params = {}) {
     }
     throw err;
   }
-  if (!isReadAction(action)) Cache.clearAll();
   return json.data;
 }
 
