@@ -3,11 +3,22 @@ import { Icons } from '../icons.js';
 import { formatRupiah } from '../ui.js';
 import { withCache } from '../cache.js';
 
+const FILTERS = [
+  { value: 'day', label: 'Hari Ini' },
+  { value: 'week', label: 'Minggu Ini' },
+  { value: 'month', label: 'Bulan Ini' }
+];
+const DEFAULT_FILTER = 'month';
+
 export async function renderOwnerDashboard(container) {
-  await withCache(container, 'owner.dashboard', () => Api.call('owner.dashboard'), (data) => draw(container, data));
+  await loadFilter(container, DEFAULT_FILTER);
 }
 
-function draw(container, data) {
+async function loadFilter(container, filter) {
+  await withCache(container, 'owner.dashboard:' + filter, () => Api.call('owner.dashboard', { filter }), (data) => draw(container, data, filter));
+}
+
+function draw(container, data, filter) {
   container.innerHTML = `
     <div class="grid grid-4">
       ${statCard('blue', 'branch', data.total_branches, 'Total Cabang')}
@@ -15,10 +26,17 @@ function draw(container, data) {
       ${statCard('amber', 'wifi', data.wifi_off_customers, 'WiFi Sedang Mati')}
       ${statCard('red', 'alert', data.overdue_customers, 'Sudah Jatuh Tempo', '#/unpaid')}
     </div>
-    <div class="grid grid-4" style="margin-top:16px">
-      ${statCard('green', 'card', formatRupiah(data.revenue_this_month), 'Pendapatan Bulan Ini')}
-      ${statCard('red', 'expense', formatRupiah(data.expense_this_month), 'Pengeluaran Bulan Ini', '#/expenses')}
-      ${statCard('blue', 'card', formatRupiah(data.revenue_this_month - data.expense_this_month), 'Laba Bersih Bulan Ini')}
+
+    <div class="card-header" style="margin-top:22px;margin-bottom:8px">
+      <h3>Laporan Keuangan</h3>
+      <div class="period-filter" id="period-filter">
+        ${FILTERS.map(f => `<button type="button" class="period-filter-btn ${f.value === filter ? 'active' : ''}" data-filter="${f.value}">${f.label}</button>`).join('')}
+      </div>
+    </div>
+    <div class="grid grid-4">
+      ${statCard('green', 'card', formatRupiah(data.revenue), 'Pendapatan ' + data.period_label)}
+      ${statCard('red', 'expense', formatRupiah(data.expense), 'Pengeluaran ' + data.period_label, '#/expenses')}
+      ${statCard('blue', 'card', formatRupiah(data.revenue - data.expense), 'Laba Bersih ' + data.period_label)}
     </div>
 
     <div class="card" style="margin-top:18px">
@@ -39,15 +57,19 @@ function draw(container, data) {
                 <td>${b.active_customers}</td>
                 <td>${b.overdue_customers > 0 ? `<span class="badge badge-danger">${b.overdue_customers}</span>` : '0'}</td>
                 <td>${b.wifi_off > 0 ? `<span class="badge badge-warning">${b.wifi_off}</span>` : '0'}</td>
-                <td>${formatRupiah(b.revenue_this_month)}</td>
-                <td>${formatRupiah(b.expense_this_month)}</td>
-                <td>${formatRupiah(b.revenue_this_month - b.expense_this_month)}</td>
+                <td>${formatRupiah(b.revenue)}</td>
+                <td>${formatRupiah(b.expense)}</td>
+                <td>${formatRupiah(b.revenue - b.expense)}</td>
               </tr>`).join('') : `<tr><td colspan="8" class="empty-state">Belum ada cabang. Tambahkan lewat menu "Cabang".</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
   `;
+
+  container.querySelectorAll('#period-filter [data-filter]').forEach(btn => {
+    btn.onclick = () => loadFilter(container, btn.dataset.filter);
+  });
 }
 
 function statCard(color, icon, value, label, href) {

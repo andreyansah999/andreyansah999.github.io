@@ -273,6 +273,19 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--primary); }
 .card-header h3 { margin: 0; font-size: 1rem; }
 .card-header .sub { color: var(--text-muted); font-size: .8rem; }
 
+/* Filter periode (Hari/Minggu/Bulan) laporan keuangan di dashboard */
+.period-filter {
+  display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.period-filter-btn {
+  border: none; background: transparent; color: var(--text-muted);
+  font-size: .82rem; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.period-filter-btn:hover { color: var(--text); }
+.period-filter-btn.active { background: var(--primary); color: #fff; }
+
 .stat-card { display: flex; align-items: center; gap: 14px; }
 .stat-icon {
   width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
