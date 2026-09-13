@@ -1,11 +1,13 @@
 /**
  * ownerPaymentHistory.js — riwayat pembayaran semua cabang, terpisah dari log Aktivitas,
- * dengan filter cabang & rentang tanggal.
+ * dengan filter cabang & rentang tanggal. Tiap baris bisa dibatalkan (mis. salah input) -
+ * lihat onVoid(): nominalnya dijadikan Rp 0 (bukan dihapus, arsip tetap ada) supaya total
+ * pendapatan di halaman ini & Dashboard otomatis ikut terkoreksi.
  */
 import { Api } from '../api.js';
 import { Icons } from '../icons.js';
-import { escapeHtml, formatDate, formatRupiah } from '../ui.js';
-import { withCache } from '../cache.js';
+import { escapeHtml, formatDate, formatRupiah, confirmDialog, toast } from '../ui.js';
+import { withCache, Cache, captureToken, isStale } from '../cache.js';
 
 const CACHE_KEY = 'owner.payments.page';
 const METHOD_LABEL = { cash: 'Tunai', transfer: 'Transfer', lainnya: 'Lainnya' };
@@ -17,6 +19,14 @@ async function fetchData() {
 
 export async function renderOwnerPaymentHistory(container) {
   await withCache(container, CACHE_KEY, fetchData, (data) => initView(container, data));
+}
+
+async function reload(container) {
+  const myToken = captureToken(container);
+  const data = await fetchData();
+  if (isStale(container, myToken)) return; // pengguna sudah pindah halaman, buang hasilnya
+  Cache.set(CACHE_KEY, data);
+  initView(container, data);
 }
 
 function initView(container, data) {
@@ -53,10 +63,10 @@ function initView(container, data) {
     container.querySelector('#table-slot').innerHTML = `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Tanggal Bayar</th><th>Cabang</th><th>Pelanggan</th><th>Periode</th><th>Jumlah</th><th>Metode</th><th>Diterima Oleh</th><th>Catatan</th></tr></thead>
+          <thead><tr><th>Tanggal Bayar</th><th>Cabang</th><th>Pelanggan</th><th>Periode</th><th>Jumlah</th><th>Metode</th><th>Diterima Oleh</th><th>Catatan</th><th></th></tr></thead>
           <tbody>
             ${rows.length ? rows.map(p => `
-              <tr>
+              <tr${p.amount > 0 ? '' : ' class="text-muted"'}>
                 <td style="white-space:nowrap">${formatDate(p.paid_date)}</td>
                 <td>${escapeHtml(p.branch_name)}</td>
                 <td>${escapeHtml(p.customer_name)}</td>
@@ -65,11 +75,36 @@ function initView(container, data) {
                 <td>${escapeHtml(METHOD_LABEL[p.method] || p.method)}</td>
                 <td>${escapeHtml(p.received_by_name)}</td>
                 <td>${escapeHtml(p.note || '-')}</td>
-              </tr>`).join('') : `<tr><td colspan="8" class="empty-state">${Icons.card}<div>Tidak ada pembayaran yang cocok dengan filter.</div></td></tr>`}
+                <td>
+                  ${p.amount > 0
+                    ? `<button class="btn btn-ghost btn-sm" data-act="void" data-id="${p.id}" title="Salah catat? Batalkan pembayaran ini">${Icons.trash}</button>`
+                    : `<span class="badge badge-muted">Dibatalkan</span>`}
+                </td>
+              </tr>`).join('') : `<tr><td colspan="9" class="empty-state">${Icons.card}<div>Tidak ada pembayaran yang cocok dengan filter.</div></td></tr>`}
           </tbody>
         </table>
       </div>
     `;
+
+    container.querySelectorAll('[data-act="void"]').forEach(btn => {
+      btn.onclick = () => onVoid(btn.dataset.id);
+    });
+  }
+
+  async function onVoid(paymentId) {
+    const payment = payments.find(p => p.id === paymentId);
+    if (!payment) return;
+    const ok = await confirmDialog(
+      `Batalkan pembayaran ${payment.customer_name} sebesar ${formatRupiah(payment.amount)} (periode ${payment.period})? ` +
+      `Nominal akan diubah jadi Rp 0 - baris tetap tersimpan sebagai arsip, dan laporan keuangan otomatis ikut terkoreksi.`,
+      { danger: true, okLabel: 'Batalkan Pembayaran' }
+    );
+    if (!ok) return;
+    try {
+      await Api.call('owner.payments.void_by_id', { payment_id: paymentId });
+      toast('Pembayaran dibatalkan', 'success');
+      reload(container);
+    } catch (err) { toast(err.message, 'error'); }
   }
 
   container.innerHTML = `

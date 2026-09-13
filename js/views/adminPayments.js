@@ -1,6 +1,6 @@
 import { Api } from '../api.js';
 import { Icons } from '../icons.js';
-import { toast, openModal, closeModal, escapeHtml, setLoading, formatRupiah, formatDate } from '../ui.js';
+import { toast, openModal, closeModal, confirmDialog, escapeHtml, setLoading, formatRupiah, formatDate } from '../ui.js';
 import { withCache, Cache, captureToken, isStale } from '../cache.js';
 
 const CACHE_KEY = 'admin.payments.page';
@@ -30,23 +30,46 @@ function draw(container, payments, customers) {
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Tanggal Bayar</th><th>Pelanggan</th><th>Periode</th><th>Jumlah</th><th>Metode</th><th>Catatan</th></tr></thead>
+        <thead><tr><th>Tanggal Bayar</th><th>Pelanggan</th><th>Periode</th><th>Jumlah</th><th>Metode</th><th>Catatan</th><th></th></tr></thead>
         <tbody>
           ${payments.length ? payments.map(p => `
-            <tr>
+            <tr${p.amount > 0 ? '' : ' class="text-muted"'}>
               <td>${formatDate(p.paid_date)}</td>
               <td>${escapeHtml(p.customer_name)}</td>
               <td>${escapeHtml(p.period)}</td>
               <td>${formatRupiah(p.amount)}</td>
               <td>${escapeHtml(p.method)}</td>
               <td>${escapeHtml(p.note || '-')}</td>
-            </tr>`).join('') : `<tr><td colspan="6" class="empty-state">${Icons.card}<div>Belum ada pembayaran tercatat.</div></td></tr>`}
+              <td>
+                ${p.amount > 0
+                  ? `<button class="btn btn-ghost btn-sm" data-act="void" data-id="${p.id}" title="Salah catat? Batalkan pembayaran ini">${Icons.trash}</button>`
+                  : `<span class="badge badge-muted">Dibatalkan</span>`}
+              </td>
+            </tr>`).join('') : `<tr><td colspan="7" class="empty-state">${Icons.card}<div>Belum ada pembayaran tercatat.</div></td></tr>`}
         </tbody>
       </table>
     </div>
   `;
 
   container.querySelector('#btn-add').onclick = () => openForm(container, customers);
+  container.querySelectorAll('[data-act="void"]').forEach(btn => {
+    btn.onclick = () => onVoid(container, payments.find(p => p.id === btn.dataset.id));
+  });
+}
+
+async function onVoid(container, payment) {
+  if (!payment) return;
+  const ok = await confirmDialog(
+    `Batalkan pembayaran ${payment.customer_name} sebesar ${formatRupiah(payment.amount)} (periode ${payment.period})? ` +
+    `Nominal akan diubah jadi Rp 0 - baris tetap tersimpan sebagai arsip, dan laporan keuangan otomatis ikut terkoreksi.`,
+    { danger: true, okLabel: 'Batalkan Pembayaran' }
+  );
+  if (!ok) return;
+  try {
+    await Api.call('admin.payments.void_by_id', { payment_id: payment.id });
+    toast('Pembayaran dibatalkan', 'success');
+    reload(container);
+  } catch (err) { toast(err.message, 'error'); }
 }
 
 function openForm(container, customers) {
@@ -89,15 +112,32 @@ function openForm(container, customers) {
     const fd = new FormData(e.target);
     const btn = overlay.querySelector('#btn-save');
     if (!fd.get('customer_id')) { toast('Pilih pelanggan dulu', 'error'); return; }
+    const payload = {
+      customer_id: fd.get('customer_id'), period: fd.get('period'), paid_date: fd.get('paid_date'),
+      amount: Number(fd.get('amount')), method: fd.get('method'), note: fd.get('note')
+    };
     setLoading(btn, true);
     try {
-      await Api.call('admin.payments.record', {
-        customer_id: fd.get('customer_id'), period: fd.get('period'), paid_date: fd.get('paid_date'),
-        amount: Number(fd.get('amount')), method: fd.get('method'), note: fd.get('note')
-      });
-      closeModal();
-      toast('Pembayaran tercatat. WiFi otomatis dinyalakan kembali bila sebelumnya mati karena telat.', 'success');
-      reload(container);
-    } catch (err) { toast(err.message, 'error'); setLoading(btn, false); }
+      await Api.call('admin.payments.record', payload);
+    } catch (err) {
+      // Server mendeteksi kemungkinan input dobel (pembayaran lain utk pelanggan yang sama
+      // baru dicatat < 1 menit lalu) - tanya dulu ke pengguna, jangan langsung ditolak.
+      if (err.code === 'DUPLICATE_SUSPECTED') {
+        setLoading(btn, false);
+        const proceed = await confirmDialog(err.message, { danger: true, okLabel: 'Ya, Tetap Catat' });
+        if (!proceed) return;
+        setLoading(btn, true);
+        try {
+          await Api.call('admin.payments.record', Object.assign({}, payload, { confirm_duplicate: true }));
+        } catch (err2) {
+          toast(err2.message, 'error'); setLoading(btn, false); return;
+        }
+      } else {
+        toast(err.message, 'error'); setLoading(btn, false); return;
+      }
+    }
+    closeModal();
+    toast('Pembayaran tercatat. WiFi otomatis dinyalakan kembali bila sebelumnya mati karena telat.', 'success');
+    reload(container);
   });
 }

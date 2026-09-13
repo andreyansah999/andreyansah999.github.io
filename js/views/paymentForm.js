@@ -4,7 +4,7 @@
  * adminPayments.js yang punya alur pilih-pelanggan sendiri.
  */
 import { Api } from '../api.js';
-import { toast, openModal, closeModal, escapeHtml, setLoading, formatRupiah } from '../ui.js';
+import { toast, openModal, closeModal, confirmDialog, escapeHtml, setLoading, formatRupiah } from '../ui.js';
 
 export function openPaymentForm({ customer, recordAction, onSaved }) {
   const now = new Date();
@@ -40,15 +40,32 @@ export function openPaymentForm({ customer, recordAction, onSaved }) {
     e.preventDefault();
     const fd = new FormData(e.target);
     const btn = overlay.querySelector('#btn-save');
+    const payload = {
+      customer_id: customer.id, period: fd.get('period'), paid_date: fd.get('paid_date'),
+      amount: Number(fd.get('amount')), method: fd.get('method'), note: fd.get('note')
+    };
     setLoading(btn, true);
     try {
-      await Api.call(recordAction, {
-        customer_id: customer.id, period: fd.get('period'), paid_date: fd.get('paid_date'),
-        amount: Number(fd.get('amount')), method: fd.get('method'), note: fd.get('note')
-      });
-      closeModal();
-      toast('Pembayaran tercatat. WiFi otomatis dinyalakan kembali bila sebelumnya mati karena telat.', 'success');
-      onSaved();
-    } catch (err) { toast(err.message, 'error'); setLoading(btn, false); }
+      await Api.call(recordAction, payload);
+    } catch (err) {
+      // Server mendeteksi kemungkinan input dobel (pembayaran lain utk pelanggan yang sama
+      // baru dicatat < 1 menit lalu) - tanya dulu ke pengguna, jangan langsung ditolak.
+      if (err.code === 'DUPLICATE_SUSPECTED') {
+        setLoading(btn, false);
+        const proceed = await confirmDialog(err.message, { danger: true, okLabel: 'Ya, Tetap Catat' });
+        if (!proceed) return;
+        setLoading(btn, true);
+        try {
+          await Api.call(recordAction, Object.assign({}, payload, { confirm_duplicate: true }));
+        } catch (err2) {
+          toast(err2.message, 'error'); setLoading(btn, false); return;
+        }
+      } else {
+        toast(err.message, 'error'); setLoading(btn, false); return;
+      }
+    }
+    closeModal();
+    toast('Pembayaran tercatat. WiFi otomatis dinyalakan kembali bila sebelumnya mati karena telat.', 'success');
+    onSaved();
   });
 }
