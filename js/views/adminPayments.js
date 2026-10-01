@@ -72,8 +72,26 @@ async function onVoid(container, payment) {
   } catch (err) { toast(err.message, 'error'); }
 }
 
+/**
+ * Label periode (Indonesia, "Agustus 2026" dst) untuk `owed` bulan terakhir yang berakhir di
+ * `periodStr` ("yyyy-MM"), terlama lebih dulu. Cuma untuk ditampilkan ke pengguna (bukan
+ * dikirim ke server) - lihat Owner.gs monthsOwed_ untuk cara `months_overdue` dihitung.
+ */
+function arrearsPeriodLabels(periodStr, owed) {
+  const [y, m] = periodStr.split('-').map(Number);
+  const curIdx = y * 12 + (m - 1);
+  const labels = [];
+  for (let i = owed - 1; i >= 0; i--) {
+    const idx = curIdx - i;
+    const yy = Math.floor(idx / 12);
+    const mm = (idx % 12) + 1;
+    labels.push(new Date(yy, mm - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }));
+  }
+  return labels;
+}
+
 function openForm(container, customers) {
-  const options = customers.map(c => `<option value="${c.id}" data-price="${c.price}">${escapeHtml(c.name)} — ${escapeHtml(c.package_name)} (${formatRupiah(c.price)})</option>`).join('');
+  const options = customers.map(c => `<option value="${c.id}" data-price="${c.price}" data-owed="${c.months_overdue || 0}">${escapeHtml(c.name)} — ${escapeHtml(c.package_name)} (${formatRupiah(c.price)})</option>`).join('');
   const now = new Date();
   const period = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   const today = now.toISOString().slice(0, 10);
@@ -83,6 +101,7 @@ function openForm(container, customers) {
     <form id="payment-form">
       <div class="modal-body">
         <div class="field"><label>Pelanggan</label><select name="customer_id" id="sel-customer" required><option value="">- Pilih Pelanggan -</option>${options}</select></div>
+        <div id="arrears-notice"></div>
         <div class="field-row">
           <div class="field"><label>Periode (Bulan)</label><input type="month" name="period" value="${period}" required /></div>
           <div class="field"><label>Tanggal Bayar</label><input type="date" name="paid_date" value="${today}" required /></div>
@@ -104,7 +123,23 @@ function openForm(container, customers) {
 
   overlay.querySelector('#sel-customer').addEventListener('change', (e) => {
     const opt = e.target.selectedOptions[0];
-    overlay.querySelector('#amount-input').value = opt?.dataset.price || '';
+    const price = Number(opt?.dataset.price) || 0;
+    // Kalau pelanggan menunggak >=2 bulan, total tagihan yang disarankan dikalikan sejumlah
+    // bulan tunggakannya, bukan cuma 1 bulan - supaya admin tidak kurang catat nominal.
+    const owed = Math.max(1, Number(opt?.dataset.owed) || 1);
+    const notice = overlay.querySelector('#arrears-notice');
+    if (owed >= 2) {
+      const periodInput = overlay.querySelector('input[name="period"]');
+      notice.innerHTML = `
+        <div class="field" style="background:var(--danger-light);border-radius:10px;padding:10px 12px;margin-bottom:4px">
+          <strong style="color:var(--danger)">Pelanggan ini menunggak ${owed} bulan</strong>
+          <div class="text-muted" style="font-size:.8rem">Periode: ${arrearsPeriodLabels(periodInput.value, owed).join(', ')}. Total tagihan disarankan: ${formatRupiah(price * owed)} (${formatRupiah(price)} × ${owed} bulan) - nominal boleh disesuaikan kalau pelanggan cuma bayar sebagian.</div>
+        </div>`;
+      overlay.querySelector('#amount-input').value = price * owed;
+    } else {
+      notice.innerHTML = '';
+      overlay.querySelector('#amount-input').value = price || '';
+    }
   });
   overlay.querySelector('#btn-cancel').onclick = closeModal;
   overlay.querySelector('#payment-form').addEventListener('submit', async (e) => {
