@@ -112,7 +112,7 @@ function openForm(container, customers) {
             <select name="method"><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="lainnya">Lainnya</option></select>
           </div>
         </div>
-        <div class="field"><label>Catatan</label><input name="note" /></div>
+        <div class="field"><label>Catatan</label><input name="note" id="note-input" /></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" id="btn-cancel">Batal</button>
@@ -130,15 +130,18 @@ function openForm(container, customers) {
     const notice = overlay.querySelector('#arrears-notice');
     if (owed >= 2) {
       const periodInput = overlay.querySelector('input[name="period"]');
+      const periodLabels = arrearsPeriodLabels(periodInput.value, owed);
       notice.innerHTML = `
         <div class="field" style="background:var(--danger-light);border-radius:10px;padding:10px 12px;margin-bottom:4px">
           <strong style="color:var(--danger)">Pelanggan ini menunggak ${owed} bulan</strong>
-          <div class="text-muted" style="font-size:.8rem">Periode: ${arrearsPeriodLabels(periodInput.value, owed).join(', ')}. Total tagihan disarankan: ${formatRupiah(price * owed)} (${formatRupiah(price)} × ${owed} bulan) - nominal boleh disesuaikan kalau pelanggan cuma bayar sebagian.</div>
+          <div class="text-muted" style="font-size:.8rem">Periode: ${periodLabels.join(', ')}. Total tagihan disarankan: ${formatRupiah(price * owed)} (${formatRupiah(price)} × ${owed} bulan) - nominal boleh disesuaikan kalau pelanggan cuma bayar sebagian.</div>
         </div>`;
       overlay.querySelector('#amount-input').value = price * owed;
+      overlay.querySelector('#note-input').value = `Pembayaran ${owed} bulan (${periodLabels.join(', ')})`;
     } else {
       notice.innerHTML = '';
       overlay.querySelector('#amount-input').value = price || '';
+      overlay.querySelector('#note-input').value = '';
     }
   });
   overlay.querySelector('#btn-cancel').onclick = closeModal;

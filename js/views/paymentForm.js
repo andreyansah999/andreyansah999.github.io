@@ -36,6 +36,7 @@ export function openPaymentForm({ customer, recordAction, onSaved }) {
   const unitPrice = Number(customer.price) || 0;
   const suggestedAmount = unitPrice * owed;
   const isArrears = owed >= 2;
+  const suggestedNote = isArrears ? `Pembayaran ${owed} bulan (${arrearsPeriodLabels(period, owed).join(', ')})` : '';
 
   const overlay = openModal(`
     <div class="modal-header"><h3>Catat Pembayaran — ${escapeHtml(customer.name)}</h3></div>
@@ -58,7 +59,7 @@ export function openPaymentForm({ customer, recordAction, onSaved }) {
             <select name="method"><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="lainnya">Lainnya</option></select>
           </div>
         </div>
-        <div class="field"><label>Catatan</label><input name="note" /></div>
+        <div class="field"><label>Catatan</label><input name="note" value="${escapeHtml(suggestedNote)}" /></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" id="btn-cancel">Batal</button>
