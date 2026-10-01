@@ -1,12 +1,13 @@
 import { Api } from '../api.js';
 import { Icons } from '../icons.js';
-import { formatRupiah } from '../ui.js';
+import { formatRupiah, formatDate, toast } from '../ui.js';
 import { withCache } from '../cache.js';
 
 const FILTERS = [
   { value: 'day', label: 'Hari Ini' },
   { value: 'week', label: 'Minggu Ini' },
-  { value: 'month', label: 'Bulan Ini' }
+  { value: 'month', label: 'Bulan Ini' },
+  { value: 'custom', label: 'Custom' }
 ];
 const DEFAULT_FILTER = 'month';
 
@@ -14,11 +15,22 @@ export async function renderOwnerDashboard(container) {
   await loadFilter(container, DEFAULT_FILTER);
 }
 
-async function loadFilter(container, filter) {
-  await withCache(container, 'owner.dashboard:' + filter, () => Api.call('owner.dashboard', { filter }), (data) => draw(container, data, filter));
+async function loadFilter(container, filter, range) {
+  const params = { filter };
+  let cacheKey = 'owner.dashboard:' + filter;
+  if (filter === 'custom' && range) {
+    params.start = range.start; params.end = range.end;
+    cacheKey += ':' + range.start + ':' + range.end;
+  }
+  await withCache(container, cacheKey, () => Api.call('owner.dashboard', params), (data) => draw(container, data, filter, range));
 }
 
-function draw(container, data, filter) {
+function draw(container, data, filter, customRange) {
+  // Draft rentang custom: kalau belum pernah diisi pengguna, mulai dari rentang yang lagi
+  // ditampilkan (period_start/end dari filter sebelumnya) supaya tinggal disesuaikan.
+  const draft = customRange || { start: data.period_start, end: data.period_end };
+  const periodLabel = filter === 'custom' ? `${formatDate(data.period_start)} - ${formatDate(data.period_end)}` : data.period_label;
+
   container.innerHTML = `
     <div class="grid grid-4">
       ${statCard('blue', 'branch', data.total_branches, 'Total Cabang')}
@@ -33,10 +45,18 @@ function draw(container, data, filter) {
         ${FILTERS.map(f => `<button type="button" class="period-filter-btn ${f.value === filter ? 'active' : ''}" data-filter="${f.value}">${f.label}</button>`).join('')}
       </div>
     </div>
+    ${filter === 'custom' ? `
+      <div class="toolbar" style="margin-top:-4px">
+        <input type="date" id="custom-start" value="${draft.start}" style="max-width:160px" />
+        <span class="text-muted">s/d</span>
+        <input type="date" id="custom-end" value="${draft.end}" style="max-width:160px" />
+        <button type="button" class="btn btn-primary btn-sm" id="btn-apply-custom">Terapkan</button>
+      </div>
+    ` : ''}
     <div class="grid grid-4">
-      ${statCard('green', 'card', formatRupiah(data.revenue), 'Pendapatan ' + data.period_label)}
-      ${statCard('red', 'expense', formatRupiah(data.expense), 'Pengeluaran ' + data.period_label, '#/expenses')}
-      ${statCard('blue', 'card', formatRupiah(data.revenue - data.expense), 'Laba Bersih ' + data.period_label)}
+      ${statCard('green', 'card', formatRupiah(data.revenue), 'Pendapatan ' + periodLabel)}
+      ${statCard('red', 'expense', formatRupiah(data.expense), 'Pengeluaran ' + periodLabel, '#/expenses')}
+      ${statCard('blue', 'card', formatRupiah(data.revenue - data.expense), 'Laba Bersih ' + periodLabel)}
     </div>
 
     <div class="card" style="margin-top:18px">
@@ -68,8 +88,26 @@ function draw(container, data, filter) {
   `;
 
   container.querySelectorAll('#period-filter [data-filter]').forEach(btn => {
-    btn.onclick = () => loadFilter(container, btn.dataset.filter);
+    btn.onclick = () => {
+      const f = btn.dataset.filter;
+      if (f === 'custom') {
+        // Cuma tampilkan date picker dulu (pakai data filter sebelumnya) - belum fetch
+        // sampai pengguna benar-benar pilih tanggal & klik Terapkan.
+        draw(container, data, 'custom', draft);
+      } else {
+        loadFilter(container, f);
+      }
+    };
   });
+
+  if (filter === 'custom') {
+    container.querySelector('#btn-apply-custom').onclick = () => {
+      const start = container.querySelector('#custom-start').value;
+      const end = container.querySelector('#custom-end').value;
+      if (!start || !end) { toast('Isi tanggal "dari" dan "sampai" dulu', 'error'); return; }
+      loadFilter(container, 'custom', { start, end });
+    };
+  }
 }
 
 function statCard(color, icon, value, label, href) {

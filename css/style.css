@@ -275,7 +275,7 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--primary); }
 
 /* Filter periode (Hari/Minggu/Bulan) laporan keuangan di dashboard */
 .period-filter {
-  display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2);
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 10px;
 }
 .period-filter-btn {
