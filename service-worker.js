@@ -3,7 +3,7 @@
  * App-shell caching sederhana supaya PWA bisa diinstal & tetap buka (offline shell) walau
  * koneksi hilang sesaat. Data selalu diambil live dari API (network-first untuk request API).
  */
-const CACHE_NAME = 'anternet-v10';
+const CACHE_NAME = 'anternet-v11';
 const APP_SHELL = [
   './',
   './index.html',
