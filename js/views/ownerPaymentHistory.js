@@ -11,6 +11,7 @@ import { withCache, Cache, captureToken, isStale } from '../cache.js';
 
 const CACHE_KEY = 'owner.payments.page';
 const METHOD_LABEL = { cash: 'Tunai', transfer: 'Transfer', lainnya: 'Lainnya' };
+const RECEIVER_ROLE_LABEL = { owner: 'Owner', admin: 'Admin Cabang' };
 
 async function fetchData() {
   const [payments, branches] = await Promise.all([Api.call('owner.payments.list'), Api.call('owner.branches.list')]);
@@ -46,9 +47,37 @@ function initView(container, data) {
     });
   }
 
+  function groupByReceiver(rows) {
+    const groups = new Map();
+    rows.forEach((payment) => {
+      const amount = Number(payment.amount) || 0;
+      if (amount <= 0) return;
+
+      const receiverId = payment.received_by_id || payment.received_by_name || '-';
+      const key = `${payment.branch_id}:${receiverId}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          branch_name: payment.branch_name,
+          received_by_name: payment.received_by_name || '-',
+          received_by_role: payment.received_by_role || '',
+          total: 0,
+        };
+        groups.set(key, group);
+      }
+      group.total += amount;
+    });
+
+    return Array.from(groups.values()).sort((a, b) =>
+      a.branch_name.localeCompare(b.branch_name, 'id') ||
+      a.received_by_name.localeCompare(b.received_by_name, 'id')
+    );
+  }
+
   function renderTable() {
     const rows = filtered();
     const total = rows.reduce((s, p) => s + p.amount, 0);
+    const receiverGroups = groupByReceiver(rows);
 
     container.querySelector('#summary-slot').innerHTML = `
       <div class="card stat-card">
@@ -57,6 +86,20 @@ function initView(container, data) {
           <div class="stat-value">${formatRupiah(total)}</div>
           <div class="stat-label">Total ${rows.length} transaksi sesuai filter</div>
         </div>
+      </div>
+      <div class="section-title">Ringkasan Penerimaan per Cabang &amp; Penerima</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Cabang</th><th>Diterima Oleh</th><th>Total Diterima</th></tr></thead>
+          <tbody>
+            ${receiverGroups.length ? receiverGroups.map(group => `
+              <tr>
+                <td>${escapeHtml(group.branch_name)}</td>
+                <td>${RECEIVER_ROLE_LABEL[group.received_by_role] ? `<strong>${RECEIVER_ROLE_LABEL[group.received_by_role]}</strong> · ` : ''}${escapeHtml(group.received_by_name)}</td>
+                <td><strong>${formatRupiah(group.total)}</strong></td>
+              </tr>`).join('') : `<tr><td colspan="3" class="empty-state">Belum ada pembayaran valid untuk dikelompokkan.</td></tr>`}
+          </tbody>
+        </table>
       </div>
     `;
 
